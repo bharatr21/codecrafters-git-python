@@ -29,6 +29,21 @@ def create_object(content, format="blob"):
         f.write(zlib.compress(full_content))
     return sha
 
+def enumerate_tree(hash):
+    dirs = []
+    with open(f".git/objects/{hash[:2]}/{hash[2:]}", "rb") as f:
+        raw = zlib.decompress(f.read())
+        binary_data = raw.split(b"\x00", maxsplit=1)[-1]
+        while binary_data:
+            binary_list = binary_data.split(b"\x00", maxsplit=1)
+            if len(binary_list) == 1:
+                break
+            mode, binary_data = binary_list
+            name = mode.split()[-1]
+            binary_data = binary_data[len(name) + 1:]
+            dirs.append(name.decode())
+    return dirs
+
 def main():
     command = sys.argv[1]
     if command == "init":
@@ -44,6 +59,10 @@ def main():
         with open(sys.argv[3], "r") as f:
             content = f.read()
         print(create_object(content))
+    elif command == "ls-tree" and sys.argv[2] == "--name-only":
+        hash = sys.argv[3]
+        dirs = enumerate_tree(hash)
+        print("\n".join(dirs))
     else:
         raise RuntimeError(f"Unknown command #{command}")
 
