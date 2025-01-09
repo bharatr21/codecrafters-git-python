@@ -19,7 +19,7 @@ def read_file(sha):
         return raw[content_start + 1:].decode()
 
 def create_object(content, format="blob"):
-    full_content = f"{format} {len(content)}\x00".encode() + content
+    full_content = f"{format} {len(content)}\x00".encode() + content.encode()
     sha = hashlib.sha1(full_content).hexdigest()
     path = f".git/objects/{sha[:2]}/{sha[2:]}"
     if os.path.exists(path):
@@ -40,8 +40,8 @@ def main():
         print("Initialized git directory")
     elif command == "cat-file" and sys.argv[2] == "-p":
         print(read_file(sys.argv[3]), end="")
-    elif command == "hash-object":
-        with open(sys.argv[2], "r") as f:
+    elif command == "hash-object" and sys.argv[2] == "-w":
+        with open(sys.argv[3], "r") as f:
             content = f.read()
         print(create_object(content))
     else:
