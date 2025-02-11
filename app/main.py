@@ -1,9 +1,11 @@
 from argparse import ArgumentParser
 import sys
 import os
+from pathlib import Path
 import zlib
 import hashlib
 import stat
+import time
 
 def handle_cat_file(args):
     print(read_file(args.sha), end="")
@@ -23,8 +25,8 @@ def create_object(file, binary=False, format="blob"):
     mode = "rb" if binary else "r"
     with open(file, mode) as f:
         content = f.read()
-    byte_content = content.encode() if not binary else content
-    full_content = f"{format} {len(content)}\x00".encode() + byte_content
+    byte_content = content.encode("utf-8") if not binary else content
+    full_content = f"{format} {len(content)}\x00".encode("utf-8") + byte_content
     sha = hashlib.sha1(full_content).hexdigest()
     path = f".git/objects/{sha[:2]}/{sha[2:]}"
     if os.path.exists(path):
@@ -33,6 +35,17 @@ def create_object(file, binary=False, format="blob"):
     with open(path, "wb") as f:
         f.write(zlib.compress(full_content))
     return sha
+
+def write_object(parent: Path, type: str, content: bytes) -> str:
+    content = type.encode() + b" " + f"{len(content)}\0".encode() + content
+    hash = hashlib.sha1(content, usedforsecurity=False).hexdigest()
+    compressed_content = zlib.compress(content)
+    pre = hash[:2]
+    post = hash[2:]
+    p = parent / ".git" / "objects" / pre / post
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_bytes(compressed_content)
+    return hash
 
 def enumerate_tree(hash):
     dirs = []
@@ -85,6 +98,27 @@ def write_tree(path="./"):
         f.write(zlib.compress(s))
     return sha
 
+def create_commit(tree_sha, message, parent_sha, author="Test Author <test@example.com>", committer="Test Author <test@example.com>"):
+    content = f"tree {tree_sha}\n".encode("utf-8")
+    if parent_sha:
+        content += f"parent {parent_sha}\n".encode("utf-8")
+
+    timestamp = "1739308850 -0500"
+    content += f"author {author} {timestamp}\n".encode("utf-8")
+    content += f"committer {committer} {timestamp}\n\n".encode("utf-8")
+    content += message.encode("utf-8") + b"\n"
+
+    header = f"commit {len(content)}\0".encode("utf-8")
+    commit_object = header + content
+    blob_sha = hashlib.sha1(commit_object, usedforsecurity=False).hexdigest()
+    compressed_blob = zlib.compress(commit_object)
+    path = f".git/objects/{blob_sha[:2]}/{blob_sha[2:]}"
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(compressed_blob)
+
+    return blob_sha
+
 def main():
     command = sys.argv[1]
     if command == "init":
@@ -105,6 +139,12 @@ def main():
     elif command == "write-tree":
         hash = write_tree("./")
         print(hash, end="")
+    elif command == "commit-tree":
+        tree_sha, _, commit_sha, _, message = sys.argv[2:]
+        author = "Bharat <13381361+bharatr21@users.noreply.github.com>"
+        committer = "Bharat <13381361+bharatr21@users.noreply.github.com>"
+        commit_hash = create_commit(tree_sha, message, commit_sha, author, committer)
+        print(commit_hash)
     else:
         raise RuntimeError(f"Unknown command #{command}")
 
